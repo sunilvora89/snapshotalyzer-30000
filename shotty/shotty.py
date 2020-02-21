@@ -1,23 +1,28 @@
 import boto3, botocore, click
 
+################################################################################
 session = boto3.Session(profile_name='default')
 ec2=session.resource('ec2')
 
 def filter_instances(project):
     instances=[]
-
     if project:
         filters = [{'Name':'tag:Project', 'Values':[project]}]
         instances = ec2.instances.filter(Filters=filters)
     else:
         instances = ec2.instances.all()
-
     return instances
 
+def has_pending_snapshot(volume):
+    snapshots = list(volume.snapshots.all())
+    return snapshots and snapshots[0].state == 'pending'
+
+################################################################################
 @click.group('cli')
 def cli():
     """Shotty manages snapshots"""
 
+################################################################################
 @cli.group('snapshots')
 def snapshots():
     """Commands for snapshots"""
@@ -36,9 +41,7 @@ def list_snapshots(project,list_all):
                     break
     return
 
-
-
-
+################################################################################
 @cli.group('volumes')
 def volumes():
     """Commands for volumes"""
@@ -53,8 +56,7 @@ def list_volumes(project):
             print(", ".join((v.id,i.id,v.state,str(v.size) + "GiB",v.encrypted and "Encrypted" or "Not Encrypted")))
     return
 
-
-
+################################################################################
 @cli.group('instances')
 def instances():
     """Commands for instances"""
@@ -69,6 +71,9 @@ def create_snapshots(project):
         i.stop()
         i.wait_until_stopped()
         for v in i.volumes.all():
+            if has_pending_snapshot(v):
+                print(" Skipping {0}, snapshot already in progress".format(v.id))
+                continue
             print(" Creating snapshot of {0}".format(v.id))
             v.create_snapshot(Description="Created by AnapshotAlyzer 30000")
         print("Starting {0}...".format(i.id))
@@ -115,5 +120,6 @@ def start_instances(project):
             continue
     return
 
+################################################################################
 if __name__ == '__main__':
     cli()
